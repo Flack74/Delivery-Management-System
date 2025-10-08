@@ -36,7 +36,7 @@ type OrderTestSuite struct {
 
 func (suite *OrderTestSuite) SetupSuite() {
 	gin.SetMode(gin.TestMode)
-	
+
 	cfg := &config.Config{
 		Database: config.DatabaseConfig{
 			Host:     "localhost",
@@ -65,7 +65,7 @@ func (suite *OrderTestSuite) SetupSuite() {
 	suite.jwtManager = utils.NewJWTManager(cfg)
 	userService := services.NewUserService(suite.db, suite.jwtManager)
 	suite.orderService = services.NewOrderService(suite.db, suite.cache)
-	
+
 	suite.handler = handlers.NewOrderHandler(suite.orderService)
 	suite.userHandler = handlers.NewUserHandler(userService)
 
@@ -76,12 +76,12 @@ func (suite *OrderTestSuite) SetupSuite() {
 func (suite *OrderTestSuite) setupRoutes() {
 	protected := suite.router.Group("/api")
 	protected.Use(middleware.AuthMiddleware(suite.jwtManager))
-	
+
 	protected.POST("/orders", suite.handler.CreateOrder)
 	protected.GET("/orders", suite.handler.GetOrders)
 	protected.GET("/orders/:id", suite.handler.GetOrder)
 	protected.PUT("/orders/:id/cancel", suite.handler.CancelOrder)
-	
+
 	admin := protected.Group("/admin")
 	admin.Use(middleware.RoleMiddleware(models.RoleAdmin))
 	admin.POST("/orders/:id/status", suite.handler.UpdateOrderStatus)
@@ -100,7 +100,7 @@ func (suite *OrderTestSuite) SetupTest() {
 
 	// Create test users
 	hashedPassword, _ := utils.HashPassword("password123")
-	
+
 	suite.testUser = &models.User{
 		Email:    "customer@example.com",
 		Password: hashedPassword,
@@ -147,10 +147,10 @@ func (suite *OrderTestSuite) TestCreateOrder() {
 func (suite *OrderTestSuite) TestGetOrders() {
 	// Create a test order
 	order := &models.Order{
-		CustomerID:  suite.testUser.ID,
-		Status:      models.StatusCreated,
-		Items:       "Test items",
-		Address:     "Test address",
+		CustomerID: suite.testUser.ID,
+		Status:     models.StatusCreated,
+		Items:      "Test items",
+		Address:    "Test address",
 	}
 	suite.db.Create(order)
 
@@ -165,7 +165,7 @@ func (suite *OrderTestSuite) TestGetOrders() {
 	var response map[string]interface{}
 	err := json.Unmarshal(w.Body.Bytes(), &response)
 	assert.NoError(suite.T(), err)
-	
+
 	orders, ok := response["orders"].([]interface{})
 	assert.True(suite.T(), ok)
 	assert.Len(suite.T(), orders, 1)
@@ -174,10 +174,10 @@ func (suite *OrderTestSuite) TestGetOrders() {
 func (suite *OrderTestSuite) TestCancelOrder() {
 	// Create a test order
 	order := &models.Order{
-		CustomerID:  suite.testUser.ID,
-		Status:      models.StatusCreated,
-		Items:       "Test items",
-		Address:     "Test address",
+		CustomerID: suite.testUser.ID,
+		Status:     models.StatusCreated,
+		Items:      "Test items",
+		Address:    "Test address",
 	}
 	suite.db.Create(order)
 
@@ -198,10 +198,10 @@ func (suite *OrderTestSuite) TestCancelOrder() {
 func (suite *OrderTestSuite) TestAdminUpdateOrderStatus() {
 	// Create a test order
 	order := &models.Order{
-		CustomerID:  suite.testUser.ID,
-		Status:      models.StatusCreated,
-		Items:       "Test items",
-		Address:     "Test address",
+		CustomerID: suite.testUser.ID,
+		Status:     models.StatusCreated,
+		Items:      "Test items",
+		Address:    "Test address",
 	}
 	suite.db.Create(order)
 
@@ -228,10 +228,10 @@ func (suite *OrderTestSuite) TestAdminUpdateOrderStatus() {
 func (suite *OrderTestSuite) TestOrderStatusTransition() {
 	// Test invalid status transition
 	order := &models.Order{
-		CustomerID:  suite.testUser.ID,
-		Status:      models.StatusDelivered,
-		Items:       "Test items",
-		Address:     "Test address",
+		CustomerID: suite.testUser.ID,
+		Status:     models.StatusDelivered,
+		Items:      "Test items",
+		Address:    "Test address",
 	}
 	suite.db.Create(order)
 

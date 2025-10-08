@@ -11,9 +11,9 @@ import (
 )
 
 type Claims struct {
-	UserID uint             `json:"user_id"`
-	Email  string           `json:"email"`
-	Role   models.UserRole  `json:"role"`
+	UserID uint            `json:"user_id"`
+	Email  string          `json:"email"`
+	Role   models.UserRole `json:"role"`
 	jwt.RegisteredClaims
 }
 
@@ -62,6 +62,33 @@ func (j *JWTManager) ValidateToken(tokenString string) (*Claims, error) {
 	}
 
 	return nil, fmt.Errorf("invalid token")
+}
+
+func (j *JWTManager) RefreshToken(tokenString string) (string, error) {
+	claims, err := j.ValidateToken(tokenString)
+	if err != nil {
+		return "", fmt.Errorf("invalid token for refresh: %w", err)
+	}
+
+	// Check if token is close to expiry (within 1 hour)
+	if time.Until(claims.ExpiresAt.Time) > time.Hour {
+		return "", fmt.Errorf("token not eligible for refresh")
+	}
+
+	// Create new token with same claims but new expiry
+	newClaims := &Claims{
+		UserID: claims.UserID,
+		Email:  claims.Email,
+		Role:   claims.Role,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(j.expiry)),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			NotBefore: jwt.NewNumericDate(time.Now()),
+		},
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, newClaims)
+	return token.SignedString(j.secret)
 }
 
 func HashPassword(password string) (string, error) {

@@ -28,7 +28,7 @@ type UserTestSuite struct {
 
 func (suite *UserTestSuite) SetupSuite() {
 	gin.SetMode(gin.TestMode)
-	
+
 	cfg := &config.Config{
 		Database: config.DatabaseConfig{
 			Host:     "localhost",

@@ -47,7 +47,7 @@ func TestOrderStatusFinal(t *testing.T) {
 
 func TestPasswordHashing(t *testing.T) {
 	password := "testpassword123"
-	
+
 	// Test password hashing
 	hashedPassword, err := utils.HashPassword(password)
 	assert.NoError(t, err)

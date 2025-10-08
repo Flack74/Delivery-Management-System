@@ -44,7 +44,7 @@ func NewOrderService(database *db.Database, redisCache *cache.Cache) *OrderServi
 
 	// Start order processor workers
 	service.processor.start()
-	
+
 	return service
 }
 
@@ -78,7 +78,7 @@ func (p *OrderProcessor) processOrder(order *models.Order) {
 	}()
 
 	ctx := context.Background()
-	
+
 	// Simulate order progression: created -> dispatched -> in_transit -> delivered
 	statuses := []models.OrderStatus{
 		models.StatusDispatched,
@@ -97,14 +97,14 @@ func (p *OrderProcessor) processOrder(order *models.Order) {
 
 		// Update order status
 		order.Status = status
-		
+
 		// Publish status update
 		statusUpdate := map[string]interface{}{
-			"order_id": order.ID,
-			"status":   status,
+			"order_id":  order.ID,
+			"status":    status,
 			"timestamp": time.Now(),
 		}
-		
+
 		if data, err := json.Marshal(statusUpdate); err == nil {
 			p.cache.Publish(ctx, fmt.Sprintf("order:%d", order.ID), string(data))
 			p.cache.Publish(ctx, "orders:updates", string(data))
@@ -180,11 +180,11 @@ func (s *OrderService) GetAllOrders(ctx context.Context) ([]*models.OrderRespons
 func (s *OrderService) GetOrderByID(ctx context.Context, orderID uint, customerID uint, isAdmin bool) (*models.OrderResponse, error) {
 	var order models.Order
 	query := s.db.WithContext(ctx).Preload("Customer")
-	
+
 	if !isAdmin {
 		query = query.Where("customer_id = ?", customerID)
 	}
-	
+
 	if err := query.First(&order, orderID).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, fmt.Errorf("order not found")
@@ -198,11 +198,11 @@ func (s *OrderService) GetOrderByID(ctx context.Context, orderID uint, customerI
 func (s *OrderService) CancelOrder(ctx context.Context, orderID uint, customerID uint, isAdmin bool) error {
 	var order models.Order
 	query := s.db.WithContext(ctx)
-	
+
 	if !isAdmin {
 		query = query.Where("customer_id = ?", customerID)
 	}
-	
+
 	if err := query.First(&order, orderID).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return fmt.Errorf("order not found")
@@ -221,11 +221,11 @@ func (s *OrderService) CancelOrder(ctx context.Context, orderID uint, customerID
 
 	// Publish cancellation update
 	statusUpdate := map[string]interface{}{
-		"order_id": order.ID,
-		"status":   models.StatusCancelled,
+		"order_id":  order.ID,
+		"status":    models.StatusCancelled,
 		"timestamp": time.Now(),
 	}
-	
+
 	if data, err := json.Marshal(statusUpdate); err == nil {
 		s.cache.Publish(ctx, fmt.Sprintf("order:%d", order.ID), string(data))
 		s.cache.Publish(ctx, "orders:updates", string(data))
@@ -258,11 +258,11 @@ func (s *OrderService) UpdateOrderStatus(ctx context.Context, orderID uint, req 
 
 	// Publish status update
 	statusUpdate := map[string]interface{}{
-		"order_id": order.ID,
-		"status":   req.Status,
+		"order_id":  order.ID,
+		"status":    req.Status,
 		"timestamp": time.Now(),
 	}
-	
+
 	if data, err := json.Marshal(statusUpdate); err == nil {
 		s.cache.Publish(ctx, fmt.Sprintf("order:%d", order.ID), string(data))
 		s.cache.Publish(ctx, "orders:updates", string(data))

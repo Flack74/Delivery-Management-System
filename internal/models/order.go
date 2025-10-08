@@ -1,8 +1,8 @@
 package models
 
 import (
-	"time"
 	"gorm.io/gorm"
+	"time"
 )
 
 type Order struct {
@@ -29,14 +29,14 @@ type UpdateOrderStatusRequest struct {
 }
 
 type OrderResponse struct {
-	ID          uint         `json:"id"`
-	CustomerID  uint         `json:"customer_id"`
-	Status      OrderStatus  `json:"status"`
-	Items       string       `json:"items"`
-	Description string       `json:"description"`
-	Address     string       `json:"address"`
-	CreatedAt   time.Time    `json:"created_at"`
-	UpdatedAt   time.Time    `json:"updated_at"`
+	ID          uint          `json:"id"`
+	CustomerID  uint          `json:"customer_id"`
+	Status      OrderStatus   `json:"status"`
+	Items       string        `json:"items"`
+	Description string        `json:"description"`
+	Address     string        `json:"address"`
+	CreatedAt   time.Time     `json:"created_at"`
+	UpdatedAt   time.Time     `json:"updated_at"`
 	Customer    *UserResponse `json:"customer,omitempty"`
 }
 
@@ -61,4 +61,24 @@ type ErrorResponse struct {
 	Error   string `json:"error"`
 	Message string `json:"message,omitempty"`
 	Code    int    `json:"code,omitempty"`
+}
+
+type APIError struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+	Details string `json:"details,omitempty"`
+	Type    string `json:"type"`
+}
+
+func NewAPIError(code int, message, details, errorType string) *APIError {
+	return &APIError{
+		Code:    code,
+		Message: message,
+		Details: details,
+		Type:    errorType,
+	}
+}
+
+func (e *APIError) Error() string {
+	return e.Message
 }

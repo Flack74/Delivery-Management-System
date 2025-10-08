@@ -100,7 +100,7 @@ func (h *OrderHandler) GetOrder(c *gin.Context) {
 
 	userID, _ := c.Get("user_id")
 	customerID, _ := userID.(uint)
-	
+
 	userRole, _ := c.Get("user_role")
 	role, _ := userRole.(models.UserRole)
 	isAdmin := role == models.RoleAdmin
@@ -129,7 +129,7 @@ func (h *OrderHandler) CancelOrder(c *gin.Context) {
 
 	userID, _ := c.Get("user_id")
 	customerID, _ := userID.(uint)
-	
+
 	userRole, _ := c.Get("user_role")
 	role, _ := userRole.(models.UserRole)
 	isAdmin := role == models.RoleAdmin
@@ -191,7 +191,7 @@ func (h *OrderHandler) GetOrderStatus(c *gin.Context) {
 
 	userID, _ := c.Get("user_id")
 	customerID, _ := userID.(uint)
-	
+
 	userRole, _ := c.Get("user_role")
 	role, _ := userRole.(models.UserRole)
 	isAdmin := role == models.RoleAdmin
@@ -206,8 +206,8 @@ func (h *OrderHandler) GetOrderStatus(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"order_id": order.ID,
-		"status":   order.Status,
+		"order_id":   order.ID,
+		"status":     order.Status,
 		"updated_at": order.UpdatedAt,
 	})
 }

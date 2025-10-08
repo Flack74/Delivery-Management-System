@@ -40,13 +40,13 @@ func NewDatabase(cfg *config.Config) (*Database, error) {
 	// Test connection
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	
+
 	if err := sqlDB.PingContext(ctx); err != nil {
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
 	database := &Database{DB: db}
-	
+
 	// Run migrations
 	if err := database.migrate(); err != nil {
 		return nil, fmt.Errorf("failed to run migrations: %w", err)

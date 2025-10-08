@@ -20,14 +20,22 @@ func SetupRoutes(
 	// Global middleware
 	router.Use(middleware.LoggingMiddleware())
 	router.Use(middleware.CORSMiddleware())
+	router.Use(middleware.RateLimitMiddleware())
+	router.Use(middleware.MetricsMiddleware())
+	router.Use(middleware.ErrorHandlingMiddleware())
 	router.Use(gin.Recovery())
 
 	// Health check endpoint
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
-			"status": "healthy",
+			"status":  "healthy",
 			"service": "delivery-management",
 		})
+	})
+
+	// Metrics endpoint
+	router.GET("/metrics", func(c *gin.Context) {
+		c.JSON(http.StatusOK, middleware.GlobalMetrics.GetMetrics())
 	})
 
 	// API routes
@@ -39,6 +47,10 @@ func SetupRoutes(
 			auth.POST("/register", userHandler.Register)
 			auth.POST("/login", userHandler.Login)
 		}
+
+		// Refresh token route
+		refreshHandler := handlers.NewRefreshHandler(jwtManager)
+		api.POST("/auth/refresh", refreshHandler.RefreshToken)
 
 		// Protected routes
 		protected := api.Group("")

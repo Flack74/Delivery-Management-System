@@ -23,7 +23,7 @@ func (s OrderStatus) CanTransitionTo(newStatus OrderStatus) bool {
 	if !exists {
 		return false
 	}
-	
+
 	for _, allowed := range allowedTransitions {
 		if allowed == newStatus {
 			return true

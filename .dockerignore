@@ -1,0 +1,38 @@
+# Environment files
+.env
+.env.local
+.env.production
+.env.development
+
+# Git
+.git
+.gitignore
+
+# Documentation
+README.md
+*.md
+
+# IDE files
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test files
+*_test.go
+tests/
+
+# Build artifacts
+delivery-management
+*.exe
+
+# Docker files
+Dockerfile*
+docker-compose*
+
+# Logs
+*.log

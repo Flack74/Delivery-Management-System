@@ -21,18 +21,20 @@ func NewUserHandler(userService *services.UserService) *UserHandler {
 func (h *UserHandler) Register(c *gin.Context) {
 	var req models.CreateUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
+		c.Header("X-Request-ID", c.GetString("request_id"))
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{
 			Error:   "Invalid request body",
-			Message: err.Error(),
+			Message: "Request validation failed",
 		})
 		return
 	}
 
 	user, err := h.userService.Register(c.Request.Context(), &req)
 	if err != nil {
+		c.Header("X-Request-ID", c.GetString("request_id"))
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{
 			Error:   "Registration failed",
-			Message: err.Error(),
+			Message: "Unable to create user account",
 		})
 		return
 	}
@@ -46,18 +48,20 @@ func (h *UserHandler) Register(c *gin.Context) {
 func (h *UserHandler) Login(c *gin.Context) {
 	var req models.LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
+		c.Header("X-Request-ID", c.GetString("request_id"))
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{
 			Error:   "Invalid request body",
-			Message: err.Error(),
+			Message: "Request validation failed",
 		})
 		return
 	}
 
 	response, err := h.userService.Login(c.Request.Context(), &req)
 	if err != nil {
+		c.Header("X-Request-ID", c.GetString("request_id"))
 		c.JSON(http.StatusUnauthorized, models.ErrorResponse{
 			Error:   "Login failed",
-			Message: err.Error(),
+			Message: "Invalid credentials",
 		})
 		return
 	}
@@ -86,7 +90,7 @@ func (h *UserHandler) GetProfile(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusNotFound, models.ErrorResponse{
 			Error:   "User not found",
-			Message: err.Error(),
+			Message: "User profile not available",
 		})
 		return
 	}

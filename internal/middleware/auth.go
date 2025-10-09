@@ -32,7 +32,8 @@ func AuthMiddleware(jwtManager *utils.JWTManager) gin.HandlerFunc {
 		claims, err := jwtManager.ValidateToken(tokenParts[1])
 		if err != nil {
 			c.JSON(http.StatusUnauthorized, models.ErrorResponse{
-				Error: "Invalid token",
+				Error:   "Invalid token",
+				Message: "Authentication failed",
 			})
 			c.Abort()
 			return

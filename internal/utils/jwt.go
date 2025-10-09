@@ -22,11 +22,26 @@ type JWTManager struct {
 	expiry time.Duration
 }
 
-func NewJWTManager(cfg *config.Config) *JWTManager {
+func NewJWTManager(cfg *config.Config) (*JWTManager, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("config cannot be nil")
+	}
+	if cfg.JWT.Secret == "" {
+		return nil, fmt.Errorf("JWT secret cannot be empty")
+	}
+	if len(cfg.JWT.Secret) < 32 {
+		return nil, fmt.Errorf("JWT secret must be at least 32 characters for security")
+	}
+	if len(cfg.JWT.Secret) > 512 {
+		return nil, fmt.Errorf("JWT secret too long, maximum 512 characters")
+	}
+	if cfg.JWT.Expiry <= 0 || cfg.JWT.Expiry > 24*time.Hour {
+		return nil, fmt.Errorf("JWT expiry must be between 1 minute and 24 hours")
+	}
 	return &JWTManager{
 		secret: []byte(cfg.JWT.Secret),
 		expiry: cfg.JWT.Expiry,
-	}
+	}, nil
 }
 
 func (j *JWTManager) GenerateToken(user *models.User) (string, error) {

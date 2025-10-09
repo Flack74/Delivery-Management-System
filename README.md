@@ -307,16 +307,16 @@ go run cmd/main.go
 ```mermaid
 stateDiagram-v2
     [*] --> Created
-    Created --> Dispatched: Auto (10s)
+    Created --> Dispatched: Auto (60s)
     Created --> Cancelled: Manual
-    Dispatched --> InTransit: Auto (10s)
+    Dispatched --> InTransit: Auto (60s)
     Dispatched --> Cancelled: Manual
-    InTransit --> Delivered: Auto (10s)
+    InTransit --> Delivered: Auto (60s)
     Delivered --> [*]
     Cancelled --> [*]
 ```
 
-**Automatic Progression:** Orders automatically progress through statuses every 10 seconds using background workers.
+**Automatic Progression:** Orders automatically progress through statuses every 60 seconds using background workers.
 
 ---
 
@@ -338,6 +338,7 @@ stateDiagram-v2
 | `JWT_SECRET` | JWT signing key | `your_secret_key` | ✅ |
 | `JWT_EXPIRY` | Token expiry | `24h` | ❌ |
 | `SERVER_PORT` | Server port | `8080` | ❌ |
+| `CSRF_PROTECTION` | Enable/disable CSRF | `false` | ❌ |
 
 ### Setup Configuration
 
@@ -512,6 +513,6 @@ Yes, the default rate limit is 100 requests per minute per IP. You can configure
 
 **⭐ Star this repository if you find it helpful!**
 
-Made with ❤️ using **Go 1.25**
+Made with ❤️ by **Flack**
 
 </div>

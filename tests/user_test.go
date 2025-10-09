@@ -15,6 +15,7 @@ import (
 	"delivery-management/internal/utils"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -45,9 +46,11 @@ func (suite *UserTestSuite) SetupSuite() {
 
 	var err error
 	suite.db, err = db.NewDatabase(cfg)
-	suite.Require().NoError(err)
+	require.NoError(suite.T(), err)
 
-	suite.jwtManager = utils.NewJWTManager(cfg)
+	suite.jwtManager, err = utils.NewJWTManager(cfg)
+	require.NoError(suite.T(), err)
+	
 	userService := services.NewUserService(suite.db, suite.jwtManager)
 	suite.handler = handlers.NewUserHandler(userService)
 
@@ -57,11 +60,12 @@ func (suite *UserTestSuite) SetupSuite() {
 }
 
 func (suite *UserTestSuite) TearDownSuite() {
-	suite.db.Close()
+	if suite.db != nil {
+		suite.db.Close()
+	}
 }
 
 func (suite *UserTestSuite) SetupTest() {
-	// Clean up database before each test
 	suite.db.Exec("DELETE FROM orders")
 	suite.db.Exec("DELETE FROM users")
 }
@@ -73,8 +77,11 @@ func (suite *UserTestSuite) TestUserRegistration() {
 		Role:     models.RoleCustomer,
 	}
 
-	jsonBody, _ := json.Marshal(reqBody)
-	req, _ := http.NewRequest("POST", "/register", bytes.NewBuffer(jsonBody))
+	jsonBody, err := json.Marshal(reqBody)
+	require.NoError(suite.T(), err)
+	
+	req, err := http.NewRequest("POST", "/register", bytes.NewBuffer(jsonBody))
+	require.NoError(suite.T(), err)
 	req.Header.Set("Content-Type", "application/json")
 
 	w := httptest.NewRecorder()
@@ -83,29 +90,32 @@ func (suite *UserTestSuite) TestUserRegistration() {
 	assert.Equal(suite.T(), http.StatusCreated, w.Code)
 
 	var response map[string]interface{}
-	err := json.Unmarshal(w.Body.Bytes(), &response)
-	assert.NoError(suite.T(), err)
+	err = json.Unmarshal(w.Body.Bytes(), &response)
+	require.NoError(suite.T(), err)
 	assert.Equal(suite.T(), "User registered successfully", response["message"])
 }
 
 func (suite *UserTestSuite) TestUserLogin() {
-	// First register a user
+	hashedPassword, err := utils.HashPassword("password123")
+	require.NoError(suite.T(), err)
+	
 	user := &models.User{
 		Email:    "test@example.com",
-		Password: "hashedpassword",
+		Password: hashedPassword,
 		Role:     models.RoleCustomer,
 	}
-	hashedPassword, _ := utils.HashPassword("password123")
-	user.Password = hashedPassword
-	suite.db.Create(user)
+	require.NoError(suite.T(), suite.db.Create(user).Error)
 
 	reqBody := models.LoginRequest{
 		Email:    "test@example.com",
 		Password: "password123",
 	}
 
-	jsonBody, _ := json.Marshal(reqBody)
-	req, _ := http.NewRequest("POST", "/login", bytes.NewBuffer(jsonBody))
+	jsonBody, err := json.Marshal(reqBody)
+	require.NoError(suite.T(), err)
+	
+	req, err := http.NewRequest("POST", "/login", bytes.NewBuffer(jsonBody))
+	require.NoError(suite.T(), err)
 	req.Header.Set("Content-Type", "application/json")
 
 	w := httptest.NewRecorder()
@@ -114,20 +124,19 @@ func (suite *UserTestSuite) TestUserLogin() {
 	assert.Equal(suite.T(), http.StatusOK, w.Code)
 
 	var response models.LoginResponse
-	err := json.Unmarshal(w.Body.Bytes(), &response)
-	assert.NoError(suite.T(), err)
+	err = json.Unmarshal(w.Body.Bytes(), &response)
+	require.NoError(suite.T(), err)
 	assert.NotEmpty(suite.T(), response.Token)
 	assert.Equal(suite.T(), "test@example.com", response.User.Email)
 }
 
 func (suite *UserTestSuite) TestDuplicateUserRegistration() {
-	// Create a user first
 	user := &models.User{
 		Email:    "test@example.com",
 		Password: "hashedpassword",
 		Role:     models.RoleCustomer,
 	}
-	suite.db.Create(user)
+	require.NoError(suite.T(), suite.db.Create(user).Error)
 
 	reqBody := models.CreateUserRequest{
 		Email:    "test@example.com",
@@ -135,8 +144,11 @@ func (suite *UserTestSuite) TestDuplicateUserRegistration() {
 		Role:     models.RoleCustomer,
 	}
 
-	jsonBody, _ := json.Marshal(reqBody)
-	req, _ := http.NewRequest("POST", "/register", bytes.NewBuffer(jsonBody))
+	jsonBody, err := json.Marshal(reqBody)
+	require.NoError(suite.T(), err)
+	
+	req, err := http.NewRequest("POST", "/register", bytes.NewBuffer(jsonBody))
+	require.NoError(suite.T(), err)
 	req.Header.Set("Content-Type", "application/json")
 
 	w := httptest.NewRecorder()

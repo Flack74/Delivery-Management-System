@@ -3,93 +3,93 @@ package middleware
 import (
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
-	"delivery-management/internal/models"
 	"github.com/gin-gonic/gin"
 )
 
+const (
+	DefaultLimit  = 100
+	DefaultWindow = time.Minute
+)
+
 type RateLimiter struct {
-	clients map[string]*ClientInfo
-	mu      sync.RWMutex
-	limit   int
-	window  time.Duration
+	rate   int64
+	period int64
 }
 
-type ClientInfo struct {
-	requests  int
-	resetTime time.Time
+type bucket struct {
+	tokens   int64
+	lastSeen int64
 }
+
+var (
+	buckets    sync.Map
+	bucketSize int64 = 10000
+)
 
 func NewRateLimiter(limit int, window time.Duration) *RateLimiter {
-	rl := &RateLimiter{
-		clients: make(map[string]*ClientInfo),
-		limit:   limit,
-		window:  window,
-	}
-
-	// Cleanup expired entries every minute
-	go rl.cleanup()
-	return rl
-}
-
-func (rl *RateLimiter) cleanup() {
-	ticker := time.NewTicker(time.Minute)
-	defer ticker.Stop()
-
-	for range ticker.C {
-		rl.mu.Lock()
-		now := time.Now()
-		for ip, info := range rl.clients {
-			if now.After(info.resetTime) {
-				delete(rl.clients, ip)
-			}
-		}
-		rl.mu.Unlock()
+	return &RateLimiter{
+		rate:   int64(limit),
+		period: int64(window),
 	}
 }
 
 func (rl *RateLimiter) Allow(clientIP string) bool {
-	rl.mu.Lock()
-	defer rl.mu.Unlock()
+	now := time.Now().UnixNano()
 
-	now := time.Now()
-	client, exists := rl.clients[clientIP]
-
-	if !exists || now.After(client.resetTime) {
-		rl.clients[clientIP] = &ClientInfo{
-			requests:  1,
-			resetTime: now.Add(rl.window),
-		}
-		return true
+	// Cleanup with proper synchronization
+	if atomic.LoadInt64(&bucketSize) > 10000 {
+		go func() {
+			buckets.Range(func(key, value interface{}) bool {
+				b := value.(*bucket)
+				if now-atomic.LoadInt64(&b.lastSeen) > int64(5*time.Minute) {
+					buckets.Delete(key)
+					atomic.AddInt64(&bucketSize, -1)
+				}
+				return atomic.LoadInt64(&bucketSize) > 5000
+			})
+		}()
 	}
 
-	if client.requests >= rl.limit {
-		return false
+	value, loaded := buckets.LoadOrStore(clientIP, &bucket{
+		tokens:   rl.rate,
+		lastSeen: now,
+	})
+	if !loaded {
+		atomic.AddInt64(&bucketSize, 1)
 	}
 
-	client.requests++
-	return true
+	b := value.(*bucket)
+	last := atomic.LoadInt64(&b.lastSeen)
+	elapsed := now - last
+
+	if elapsed > rl.period {
+		atomic.StoreInt64(&b.tokens, rl.rate)
+		atomic.StoreInt64(&b.lastSeen, now)
+		return atomic.AddInt64(&b.tokens, -1) >= 0
+	}
+
+	return atomic.AddInt64(&b.tokens, -1) >= 0
 }
 
-var defaultRateLimiter = NewRateLimiter(100, time.Minute)
+var (
+	limiter = NewRateLimiter(DefaultLimit, DefaultWindow)
+	rateLimitResponse = gin.H{
+		"error": "Rate limit exceeded",
+		"code":  "RATE_LIMIT_EXCEEDED",
+	}
+)
 
 func RateLimitMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		clientIP := c.ClientIP()
-
-		if !defaultRateLimiter.Allow(clientIP) {
-			apiErr := models.NewAPIError(
-				http.StatusTooManyRequests,
-				"Rate limit exceeded",
-				"Too many requests from this IP address",
-				"RATE_LIMIT_EXCEEDED",
-			)
-			c.JSON(http.StatusTooManyRequests, apiErr)
+		if !limiter.Allow(clientIP) {
+			c.JSON(http.StatusTooManyRequests, rateLimitResponse)
 			c.Abort()
 			return
 		}
-
 		c.Next()
 	}
 }

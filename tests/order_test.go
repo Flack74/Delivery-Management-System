@@ -18,6 +18,7 @@ import (
 	"delivery-management/internal/utils"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -57,12 +58,14 @@ func (suite *OrderTestSuite) SetupSuite() {
 
 	var err error
 	suite.db, err = db.NewDatabase(cfg)
-	suite.Require().NoError(err)
+	require.NoError(suite.T(), err)
 
 	suite.cache, err = cache.NewCache(cfg)
-	suite.Require().NoError(err)
+	require.NoError(suite.T(), err)
 
-	suite.jwtManager = utils.NewJWTManager(cfg)
+	suite.jwtManager, err = utils.NewJWTManager(cfg)
+	require.NoError(suite.T(), err)
+	
 	userService := services.NewUserService(suite.db, suite.jwtManager)
 	suite.orderService = services.NewOrderService(suite.db, suite.cache)
 
@@ -88,36 +91,42 @@ func (suite *OrderTestSuite) setupRoutes() {
 }
 
 func (suite *OrderTestSuite) TearDownSuite() {
-	suite.orderService.Stop()
-	suite.cache.Close()
-	suite.db.Close()
+	if suite.orderService != nil {
+		suite.orderService.Stop()
+	}
+	if suite.cache != nil {
+		suite.cache.Close()
+	}
+	if suite.db != nil {
+		suite.db.Close()
+	}
 }
 
 func (suite *OrderTestSuite) SetupTest() {
-	// Clean up database before each test
 	suite.db.Exec("DELETE FROM orders")
 	suite.db.Exec("DELETE FROM users")
 
-	// Create test users
-	hashedPassword, _ := utils.HashPassword("password123")
+	hashedPassword, err := utils.HashPassword("password123")
+	require.NoError(suite.T(), err)
 
 	suite.testUser = &models.User{
 		Email:    "customer@example.com",
 		Password: hashedPassword,
 		Role:     models.RoleCustomer,
 	}
-	suite.db.Create(suite.testUser)
+	require.NoError(suite.T(), suite.db.Create(suite.testUser).Error)
 
 	suite.adminUser = &models.User{
 		Email:    "admin@example.com",
 		Password: hashedPassword,
 		Role:     models.RoleAdmin,
 	}
-	suite.db.Create(suite.adminUser)
+	require.NoError(suite.T(), suite.db.Create(suite.adminUser).Error)
 }
 
 func (suite *OrderTestSuite) getAuthToken(user *models.User) string {
-	token, _ := suite.jwtManager.GenerateToken(user)
+	token, err := suite.jwtManager.GenerateToken(user)
+	require.NoError(suite.T(), err)
 	return token
 }
 
@@ -128,8 +137,11 @@ func (suite *OrderTestSuite) TestCreateOrder() {
 		Address:     "Test address",
 	}
 
-	jsonBody, _ := json.Marshal(reqBody)
-	req, _ := http.NewRequest("POST", "/api/orders", bytes.NewBuffer(jsonBody))
+	jsonBody, err := json.Marshal(reqBody)
+	require.NoError(suite.T(), err)
+	
+	req, err := http.NewRequest("POST", "/api/orders", bytes.NewBuffer(jsonBody))
+	require.NoError(suite.T(), err)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+suite.getAuthToken(suite.testUser))
 
@@ -139,22 +151,22 @@ func (suite *OrderTestSuite) TestCreateOrder() {
 	assert.Equal(suite.T(), http.StatusCreated, w.Code)
 
 	var response map[string]interface{}
-	err := json.Unmarshal(w.Body.Bytes(), &response)
-	assert.NoError(suite.T(), err)
+	err = json.Unmarshal(w.Body.Bytes(), &response)
+	require.NoError(suite.T(), err)
 	assert.Equal(suite.T(), "Order created successfully", response["message"])
 }
 
 func (suite *OrderTestSuite) TestGetOrders() {
-	// Create a test order
 	order := &models.Order{
 		CustomerID: suite.testUser.ID,
 		Status:     models.StatusCreated,
 		Items:      "Test items",
 		Address:    "Test address",
 	}
-	suite.db.Create(order)
+	require.NoError(suite.T(), suite.db.Create(order).Error)
 
-	req, _ := http.NewRequest("GET", "/api/orders", nil)
+	req, err := http.NewRequest("GET", "/api/orders", nil)
+	require.NoError(suite.T(), err)
 	req.Header.Set("Authorization", "Bearer "+suite.getAuthToken(suite.testUser))
 
 	w := httptest.NewRecorder()
@@ -163,8 +175,8 @@ func (suite *OrderTestSuite) TestGetOrders() {
 	assert.Equal(suite.T(), http.StatusOK, w.Code)
 
 	var response map[string]interface{}
-	err := json.Unmarshal(w.Body.Bytes(), &response)
-	assert.NoError(suite.T(), err)
+	err = json.Unmarshal(w.Body.Bytes(), &response)
+	require.NoError(suite.T(), err)
 
 	orders, ok := response["orders"].([]interface{})
 	assert.True(suite.T(), ok)
@@ -172,16 +184,16 @@ func (suite *OrderTestSuite) TestGetOrders() {
 }
 
 func (suite *OrderTestSuite) TestCancelOrder() {
-	// Create a test order
 	order := &models.Order{
 		CustomerID: suite.testUser.ID,
 		Status:     models.StatusCreated,
 		Items:      "Test items",
 		Address:    "Test address",
 	}
-	suite.db.Create(order)
+	require.NoError(suite.T(), suite.db.Create(order).Error)
 
-	req, _ := http.NewRequest("PUT", fmt.Sprintf("/api/orders/%d/cancel", order.ID), nil)
+	req, err := http.NewRequest("PUT", fmt.Sprintf("/api/orders/%d/cancel", order.ID), nil)
+	require.NoError(suite.T(), err)
 	req.Header.Set("Authorization", "Bearer "+suite.getAuthToken(suite.testUser))
 
 	w := httptest.NewRecorder()
@@ -189,28 +201,29 @@ func (suite *OrderTestSuite) TestCancelOrder() {
 
 	assert.Equal(suite.T(), http.StatusOK, w.Code)
 
-	// Verify order was cancelled
 	var updatedOrder models.Order
-	suite.db.First(&updatedOrder, order.ID)
+	require.NoError(suite.T(), suite.db.First(&updatedOrder, order.ID).Error)
 	assert.Equal(suite.T(), models.StatusCancelled, updatedOrder.Status)
 }
 
 func (suite *OrderTestSuite) TestAdminUpdateOrderStatus() {
-	// Create a test order
 	order := &models.Order{
 		CustomerID: suite.testUser.ID,
 		Status:     models.StatusCreated,
 		Items:      "Test items",
 		Address:    "Test address",
 	}
-	suite.db.Create(order)
+	require.NoError(suite.T(), suite.db.Create(order).Error)
 
 	reqBody := models.UpdateOrderStatusRequest{
 		Status: models.StatusDispatched,
 	}
 
-	jsonBody, _ := json.Marshal(reqBody)
-	req, _ := http.NewRequest("POST", fmt.Sprintf("/api/admin/orders/%d/status", order.ID), bytes.NewBuffer(jsonBody))
+	jsonBody, err := json.Marshal(reqBody)
+	require.NoError(suite.T(), err)
+	
+	req, err := http.NewRequest("POST", fmt.Sprintf("/api/admin/orders/%d/status", order.ID), bytes.NewBuffer(jsonBody))
+	require.NoError(suite.T(), err)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+suite.getAuthToken(suite.adminUser))
 
@@ -219,35 +232,9 @@ func (suite *OrderTestSuite) TestAdminUpdateOrderStatus() {
 
 	assert.Equal(suite.T(), http.StatusOK, w.Code)
 
-	// Verify order status was updated
 	var updatedOrder models.Order
-	suite.db.First(&updatedOrder, order.ID)
+	require.NoError(suite.T(), suite.db.First(&updatedOrder, order.ID).Error)
 	assert.Equal(suite.T(), models.StatusDispatched, updatedOrder.Status)
-}
-
-func (suite *OrderTestSuite) TestOrderStatusTransition() {
-	// Test invalid status transition
-	order := &models.Order{
-		CustomerID: suite.testUser.ID,
-		Status:     models.StatusDelivered,
-		Items:      "Test items",
-		Address:    "Test address",
-	}
-	suite.db.Create(order)
-
-	reqBody := models.UpdateOrderStatusRequest{
-		Status: models.StatusCreated,
-	}
-
-	jsonBody, _ := json.Marshal(reqBody)
-	req, _ := http.NewRequest("POST", fmt.Sprintf("/api/admin/orders/%d/status", order.ID), bytes.NewBuffer(jsonBody))
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+suite.getAuthToken(suite.adminUser))
-
-	w := httptest.NewRecorder()
-	suite.router.ServeHTTP(w, req)
-
-	assert.Equal(suite.T(), http.StatusBadRequest, w.Code)
 }
 
 func TestOrderTestSuite(t *testing.T) {

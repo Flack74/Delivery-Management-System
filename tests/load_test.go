@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -21,72 +22,87 @@ func TestLoadTesting(t *testing.T) {
 	concurrency := 10
 	requests := 100
 
-	// Test health endpoint load
 	t.Run("HealthEndpointLoad", func(t *testing.T) {
-		var wg sync.WaitGroup
-		successCount := 0
-		var mu sync.Mutex
-
-		start := time.Now()
-		for i := 0; i < requests; i++ {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				resp, err := http.Get(baseURL + "/health")
-				if err == nil && resp.StatusCode == 200 {
-					mu.Lock()
-					successCount++
-					mu.Unlock()
-				}
-				if resp != nil {
-					resp.Body.Close()
-				}
-			}()
-
-			if (i+1)%concurrency == 0 {
-				time.Sleep(10 * time.Millisecond)
-			}
-		}
-
-		wg.Wait()
-		duration := time.Since(start)
-
-		t.Logf("Load test completed: %d/%d successful requests in %v", successCount, requests, duration)
-		assert.Greater(t, successCount, requests*8/10) // 80% success rate
+		testHealthEndpoint(t, baseURL, requests, concurrency)
 	})
 
-	// Test registration endpoint load
 	t.Run("RegistrationLoad", func(t *testing.T) {
-		var wg sync.WaitGroup
-		successCount := 0
-		var mu sync.Mutex
-
-		for i := 0; i < 50; i++ {
-			wg.Add(1)
-			go func(id int) {
-				defer wg.Done()
-
-				reqBody := map[string]interface{}{
-					"email":    fmt.Sprintf("load-test-%d@example.com", id),
-					"password": "password123",
-					"role":     "customer",
-				}
-
-				jsonBody, _ := json.Marshal(reqBody)
-				resp, err := http.Post(baseURL+"/api/auth/register", "application/json", bytes.NewBuffer(jsonBody))
-
-				if err == nil && (resp.StatusCode == 201 || resp.StatusCode == 400) {
-					mu.Lock()
-					successCount++
-					mu.Unlock()
-				}
-				if resp != nil {
-					resp.Body.Close()
-				}
-			}(i)
-		}
-
-		wg.Wait()
-		t.Logf("Registration load test: %d/50 requests completed", successCount)
+		testRegistrationEndpoint(t, baseURL)
 	})
+}
+
+func testHealthEndpoint(t *testing.T, baseURL string, requests, concurrency int) {
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+		Transport: &http.Transport{
+			MaxIdleConns:        200,
+			MaxIdleConnsPerHost: 50,
+			IdleConnTimeout:     30 * time.Second,
+		},
+	}
+	
+	var wg sync.WaitGroup
+	var successCount int32
+
+	start := time.Now()
+	semaphore := make(chan struct{}, concurrency)
+	
+	for i := 0; i < requests; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			semaphore <- struct{}{}
+			defer func() { <-semaphore }()
+			
+			resp, err := client.Get(baseURL + "/health")
+			if err == nil {
+				defer resp.Body.Close()
+				if resp.StatusCode == 200 {
+					atomic.AddInt32(&successCount, 1)
+				}
+			}
+		}()
+	}
+
+	wg.Wait()
+	duration := time.Since(start)
+
+	finalCount := int(atomic.LoadInt32(&successCount))
+	t.Logf("Load test completed: %d/%d successful requests in %v", finalCount, requests, duration)
+	assert.Greater(t, finalCount, requests*8/10)
+}
+
+func testRegistrationEndpoint(t *testing.T, baseURL string) {
+	var wg sync.WaitGroup
+	var successCount int32
+
+	for i := 0; i < 50; i++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+
+			reqBody := map[string]interface{}{
+				"email":    fmt.Sprintf("load-test-%d@example.com", id),
+				"password": "password123",
+				"role":     "customer",
+			}
+
+			jsonBody, err := json.Marshal(reqBody)
+			if err != nil {
+				return
+			}
+			
+			resp, err := http.Post(baseURL+"/api/auth/register", "application/json", bytes.NewBuffer(jsonBody))
+			if err == nil {
+				defer resp.Body.Close()
+				if resp.StatusCode == 201 || resp.StatusCode == 400 {
+					atomic.AddInt32(&successCount, 1)
+				}
+			}
+		}(i)
+	}
+
+	wg.Wait()
+	finalCount := int(atomic.LoadInt32(&successCount))
+	t.Logf("Registration load test: %d/50 requests completed", finalCount)
 }

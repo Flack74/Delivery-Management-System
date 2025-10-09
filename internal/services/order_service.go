@@ -11,6 +11,7 @@ import (
 	"delivery-management/internal/cache"
 	"delivery-management/internal/db"
 	"delivery-management/internal/models"
+	"delivery-management/internal/utils"
 	"gorm.io/gorm"
 )
 
@@ -26,14 +27,16 @@ type OrderProcessor struct {
 	quit        chan bool
 	wg          sync.WaitGroup
 	cache       *cache.Cache
+	db          *db.Database
 }
 
 func NewOrderService(database *db.Database, redisCache *cache.Cache) *OrderService {
 	processor := &OrderProcessor{
-		workerCount: 5,
-		jobQueue:    make(chan *models.Order, 100),
+		workerCount: 10,
+		jobQueue:    make(chan *models.Order, 200),
 		quit:        make(chan bool),
 		cache:       redisCache,
+		db:          database,
 	}
 
 	service := &OrderService{
@@ -88,7 +91,7 @@ func (p *OrderProcessor) processOrder(order *models.Order) {
 
 	for _, status := range statuses {
 		// Wait before transitioning (simulate real processing time)
-		time.Sleep(10 * time.Second)
+		time.Sleep(60 * time.Second)
 
 		// Check if order was cancelled
 		if order.Status == models.StatusCancelled {
@@ -98,17 +101,22 @@ func (p *OrderProcessor) processOrder(order *models.Order) {
 		// Update order status
 		order.Status = status
 
-		// Publish status update
-		statusUpdate := map[string]interface{}{
-			"order_id":  order.ID,
-			"status":    status,
-			"timestamp": time.Now(),
+		// Persist status to database with optimized query
+		if err := p.db.WithContext(ctx).Model(&models.Order{}).Where("id = ?", order.ID).Update("status", status).Error; err != nil {
+			log.Printf("Failed to update order status in DB: %v", err)
+			continue
 		}
 
-		if data, err := json.Marshal(statusUpdate); err == nil {
-			p.cache.Publish(ctx, fmt.Sprintf("order:%d", order.ID), string(data))
-			p.cache.Publish(ctx, "orders:updates", string(data))
-		}
+		// Publish status update with optimized JSON
+		timestamp := time.Now().Format(time.RFC3339)
+		data := fmt.Sprintf(`{"order_id":%d,"status":"%s","timestamp":"%s"}`, order.ID, status, timestamp)
+		orderChannel := fmt.Sprintf("order:%d", order.ID)
+		
+		// Batch publish operations
+		go func() {
+			p.cache.Publish(ctx, orderChannel, data)
+			p.cache.Publish(ctx, "orders:updates", data)
+		}()
 
 		log.Printf("Order %d status updated to %s", order.ID, status)
 	}
@@ -121,6 +129,22 @@ func (p *OrderProcessor) stop() {
 }
 
 func (s *OrderService) CreateOrder(ctx context.Context, req *models.CreateOrderRequest, customerID uint) (*models.OrderResponse, error) {
+	if req == nil {
+		return nil, models.NewBadRequestError("request cannot be nil")
+	}
+	
+	// Sanitize inputs
+	req.Items = utils.SanitizeInput(req.Items)
+	req.Description = utils.SanitizeInput(req.Description)
+	req.Address = utils.SanitizeInput(req.Address)
+	
+	if req.Items == "" {
+		return nil, models.NewBadRequestError("items are required")
+	}
+	if req.Address == "" {
+		return nil, models.NewBadRequestError("address is required")
+	}
+	
 	order := &models.Order{
 		CustomerID:  customerID,
 		Status:      models.StatusCreated,
@@ -133,20 +157,29 @@ func (s *OrderService) CreateOrder(ctx context.Context, req *models.CreateOrderR
 		return nil, fmt.Errorf("failed to create order: %w", err)
 	}
 
-	// Load customer information
-	if err := s.db.WithContext(ctx).Preload("Customer").First(order, order.ID).Error; err != nil {
-		return nil, fmt.Errorf("failed to load order with customer: %w", err)
-	}
+	// Skip customer preload for better performance
+	// Customer info will be loaded when needed in response
 
-	// Queue order for processing
+	// Queue order for processing with timeout
+	ctx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
+	defer cancel()
 	select {
 	case s.processor.jobQueue <- order:
 		log.Printf("Order %d queued for processing", order.ID)
-	default:
-		log.Printf("Order processing queue is full, order %d will be processed later", order.ID)
+	case <-ctx.Done():
+		log.Printf("Order processing queue timeout, order %d will be processed later", order.ID)
 	}
 
 	return order.ToResponse(), nil
+}
+
+// convertOrdersToResponses converts slice of orders to responses
+func (s *OrderService) convertOrdersToResponses(orders []models.Order) []*models.OrderResponse {
+	responses := make([]*models.OrderResponse, len(orders))
+	for i, order := range orders {
+		responses[i] = order.ToResponse()
+	}
+	return responses
 }
 
 func (s *OrderService) GetOrdersByCustomer(ctx context.Context, customerID uint) ([]*models.OrderResponse, error) {
@@ -154,13 +187,7 @@ func (s *OrderService) GetOrdersByCustomer(ctx context.Context, customerID uint)
 	if err := s.db.WithContext(ctx).Preload("Customer").Where("customer_id = ?", customerID).Find(&orders).Error; err != nil {
 		return nil, fmt.Errorf("failed to get orders: %w", err)
 	}
-
-	responses := make([]*models.OrderResponse, len(orders))
-	for i, order := range orders {
-		responses[i] = order.ToResponse()
-	}
-
-	return responses, nil
+	return s.convertOrdersToResponses(orders), nil
 }
 
 func (s *OrderService) GetAllOrders(ctx context.Context) ([]*models.OrderResponse, error) {
@@ -168,13 +195,7 @@ func (s *OrderService) GetAllOrders(ctx context.Context) ([]*models.OrderRespons
 	if err := s.db.WithContext(ctx).Preload("Customer").Find(&orders).Error; err != nil {
 		return nil, fmt.Errorf("failed to get all orders: %w", err)
 	}
-
-	responses := make([]*models.OrderResponse, len(orders))
-	for i, order := range orders {
-		responses[i] = order.ToResponse()
-	}
-
-	return responses, nil
+	return s.convertOrdersToResponses(orders), nil
 }
 
 func (s *OrderService) GetOrderByID(ctx context.Context, orderID uint, customerID uint, isAdmin bool) (*models.OrderResponse, error) {
@@ -205,18 +226,18 @@ func (s *OrderService) CancelOrder(ctx context.Context, orderID uint, customerID
 
 	if err := query.First(&order, orderID).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
-			return fmt.Errorf("order not found")
+			return models.NewNotFoundError("order not found")
 		}
-		return fmt.Errorf("failed to get order: %w", err)
+		return models.NewInternalError("failed to get order")
 	}
 
 	if !order.Status.CanTransitionTo(models.StatusCancelled) {
-		return fmt.Errorf("cannot cancel order in %s status", order.Status)
+		return models.NewBadRequestError(fmt.Sprintf("cannot cancel order in %s status", order.Status))
 	}
 
 	order.Status = models.StatusCancelled
-	if err := s.db.WithContext(ctx).Save(&order).Error; err != nil {
-		return fmt.Errorf("failed to cancel order: %w", err)
+	if err := s.db.WithContext(ctx).Model(&order).Update("status", models.StatusCancelled).Error; err != nil {
+		return models.NewInternalError("failed to cancel order")
 	}
 
 	// Publish cancellation update
@@ -252,7 +273,7 @@ func (s *OrderService) UpdateOrderStatus(ctx context.Context, orderID uint, req 
 	}
 
 	order.Status = req.Status
-	if err := s.db.WithContext(ctx).Save(&order).Error; err != nil {
+	if err := s.db.WithContext(ctx).Model(&order).Update("status", req.Status).Error; err != nil {
 		return fmt.Errorf("failed to update order status: %w", err)
 	}
 

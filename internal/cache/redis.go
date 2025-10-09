@@ -15,27 +15,29 @@ type Cache struct {
 }
 
 func NewCache(cfg *config.Config) (*Cache, error) {
-	rdb := redis.NewClient(&redis.Options{
+	opts := &redis.Options{
 		Addr:         cfg.RedisAddr(),
 		Password:     cfg.Redis.Password,
 		DB:           0,
-		PoolSize:     10,
-		MinIdleConns: 5,
-		MaxRetries:   3,
-		DialTimeout:  5 * time.Second,
-		ReadTimeout:  3 * time.Second,
-		WriteTimeout: 3 * time.Second,
-	})
+		PoolSize:     100,
+		MinIdleConns: 20,
+		MaxRetries:   1,
+		DialTimeout:  1 * time.Second,
+		ReadTimeout:  500 * time.Millisecond,
+		WriteTimeout: 500 * time.Millisecond,
+	}
+	rdb := redis.NewClient(opts)
 
 	// Test connection
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	if err := rdb.Ping(ctx).Err(); err != nil {
-		return nil, fmt.Errorf("failed to connect to Redis: %w", err)
+		rdb.Close()
+		return nil, fmt.Errorf("Redis connection failed: %w", err)
 	}
 
-	log.Println("Redis connected successfully")
+	log.Println("Redis connection established")
 	return &Cache{client: rdb}, nil
 }
 

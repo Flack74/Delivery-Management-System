@@ -40,7 +40,7 @@ func (h *RefreshHandler) RefreshToken(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, models.ErrorResponse{
 			Error:   "Token refresh failed",
-			Message: err.Error(),
+			Message: "Invalid or expired token",
 		})
 		return
 	}

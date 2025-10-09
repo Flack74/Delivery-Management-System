@@ -52,33 +52,12 @@ func (o *Order) ToResponse() *OrderResponse {
 		UpdatedAt:   o.UpdatedAt,
 	}
 	if o.Customer.ID != 0 {
-		resp.Customer = o.Customer.ToResponse()
+		customerResp := o.Customer.ToResponse()
+		if customerResp != nil {
+			resp.Customer = customerResp
+		}
 	}
 	return resp
 }
 
-type ErrorResponse struct {
-	Error   string `json:"error"`
-	Message string `json:"message,omitempty"`
-	Code    int    `json:"code,omitempty"`
-}
 
-type APIError struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
-	Details string `json:"details,omitempty"`
-	Type    string `json:"type"`
-}
-
-func NewAPIError(code int, message, details, errorType string) *APIError {
-	return &APIError{
-		Code:    code,
-		Message: message,
-		Details: details,
-		Type:    errorType,
-	}
-}
-
-func (e *APIError) Error() string {
-	return e.Message
-}

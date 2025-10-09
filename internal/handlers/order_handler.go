@@ -1,8 +1,9 @@
 package handlers
 
 import (
+	"html"
+	"log"
 	"net/http"
-	"strconv"
 
 	"delivery-management/internal/models"
 	"delivery-management/internal/services"
@@ -19,38 +20,42 @@ func NewOrderHandler(orderService *services.OrderService) *OrderHandler {
 	}
 }
 
+// handleError centralizes error handling and prevents XSS
+func (h *OrderHandler) handleError(c *gin.Context, err error, defaultMsg string, defaultCode int) {
+	if apiErr, ok := err.(*models.APIError); ok {
+		c.JSON(apiErr.Code, models.ErrorResponse{
+			Error:   html.EscapeString(apiErr.Error()),
+			Message: html.EscapeString(apiErr.Message),
+		})
+		return
+	}
+	log.Printf("Order handler error [%s]: %v", c.Request.URL.Path, err)
+	c.Header("X-Request-ID", c.GetString("request_id"))
+	c.JSON(defaultCode, models.ErrorResponse{
+		Error:   html.EscapeString(defaultMsg),
+		Message: "Operation failed",
+	})
+}
+
 func (h *OrderHandler) CreateOrder(c *gin.Context) {
 	var req models.CreateOrderRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{
 			Error:   "Invalid request body",
-			Message: err.Error(),
+			Message: "Request validation failed",
 		})
 		return
 	}
 
-	userID, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, models.ErrorResponse{
-			Error: "User ID not found in context",
-		})
-		return
-	}
-
-	customerID, ok := userID.(uint)
-	if !ok {
-		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
-			Error: "Invalid user ID type",
-		})
+	customerID, _, err := getUserContext(c)
+	if err != nil {
+		h.handleError(c, err, "Authentication failed", http.StatusUnauthorized)
 		return
 	}
 
 	order, err := h.orderService.CreateOrder(c.Request.Context(), &req, customerID)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, models.ErrorResponse{
-			Error:   "Failed to create order",
-			Message: err.Error(),
-		})
+		h.handleError(c, err, "Failed to create order", http.StatusBadRequest)
 		return
 	}
 
@@ -61,26 +66,25 @@ func (h *OrderHandler) CreateOrder(c *gin.Context) {
 }
 
 func (h *OrderHandler) GetOrders(c *gin.Context) {
-	userRole, _ := c.Get("user_role")
-	role, _ := userRole.(models.UserRole)
-
-	var orders []*models.OrderResponse
-	var err error
-
-	if role == models.RoleAdmin {
-		orders, err = h.orderService.GetAllOrders(c.Request.Context())
-	} else {
-		userID, _ := c.Get("user_id")
-		customerID, _ := userID.(uint)
-		orders, err = h.orderService.GetOrdersByCustomer(c.Request.Context(), customerID)
+	customerID, role, err := getUserContext(c)
+	if err != nil {
+		h.handleError(c, err, "Authentication failed", http.StatusUnauthorized)
+		return
 	}
 
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
-			Error:   "Failed to get orders",
-			Message: err.Error(),
-		})
-		return
+	var orders []*models.OrderResponse
+	if role == models.RoleAdmin {
+		orders, err = h.orderService.GetAllOrders(c.Request.Context())
+		if err != nil {
+			h.handleError(c, err, "Failed to retrieve all orders", http.StatusInternalServerError)
+			return
+		}
+	} else {
+		orders, err = h.orderService.GetOrdersByCustomer(c.Request.Context(), customerID)
+		if err != nil {
+			h.handleError(c, err, "Failed to retrieve customer orders", http.StatusInternalServerError)
+			return
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -89,28 +93,22 @@ func (h *OrderHandler) GetOrders(c *gin.Context) {
 }
 
 func (h *OrderHandler) GetOrder(c *gin.Context) {
-	orderIDStr := c.Param("id")
-	orderID, err := strconv.ParseUint(orderIDStr, 10, 32)
+	orderID, err := parseOrderID(c)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, models.ErrorResponse{
-			Error: "Invalid order ID",
-		})
+		h.handleError(c, err, "Invalid order ID", http.StatusBadRequest)
 		return
 	}
 
-	userID, _ := c.Get("user_id")
-	customerID, _ := userID.(uint)
-
-	userRole, _ := c.Get("user_role")
-	role, _ := userRole.(models.UserRole)
-	isAdmin := role == models.RoleAdmin
-
-	order, err := h.orderService.GetOrderByID(c.Request.Context(), uint(orderID), customerID, isAdmin)
+	customerID, role, err := getUserContext(c)
 	if err != nil {
-		c.JSON(http.StatusNotFound, models.ErrorResponse{
-			Error:   "Order not found",
-			Message: err.Error(),
-		})
+		h.handleError(c, err, "Authentication failed", http.StatusUnauthorized)
+		return
+	}
+
+	isAdmin := role == models.RoleAdmin
+	order, err := h.orderService.GetOrderByID(c.Request.Context(), orderID, customerID, isAdmin)
+	if err != nil {
+		h.handleError(c, err, "Order not found", http.StatusNotFound)
 		return
 	}
 
@@ -118,27 +116,21 @@ func (h *OrderHandler) GetOrder(c *gin.Context) {
 }
 
 func (h *OrderHandler) CancelOrder(c *gin.Context) {
-	orderIDStr := c.Param("id")
-	orderID, err := strconv.ParseUint(orderIDStr, 10, 32)
+	orderID, err := parseOrderID(c)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, models.ErrorResponse{
-			Error: "Invalid order ID",
-		})
+		h.handleError(c, err, "Invalid order ID", http.StatusBadRequest)
 		return
 	}
 
-	userID, _ := c.Get("user_id")
-	customerID, _ := userID.(uint)
+	customerID, role, err := getUserContext(c)
+	if err != nil {
+		h.handleError(c, err, "Authentication failed", http.StatusUnauthorized)
+		return
+	}
 
-	userRole, _ := c.Get("user_role")
-	role, _ := userRole.(models.UserRole)
 	isAdmin := role == models.RoleAdmin
-
-	if err := h.orderService.CancelOrder(c.Request.Context(), uint(orderID), customerID, isAdmin); err != nil {
-		c.JSON(http.StatusBadRequest, models.ErrorResponse{
-			Error:   "Failed to cancel order",
-			Message: err.Error(),
-		})
+	if err := h.orderService.CancelOrder(c.Request.Context(), orderID, customerID, isAdmin); err != nil {
+		h.handleError(c, err, "Failed to cancel order", http.StatusBadRequest)
 		return
 	}
 
@@ -148,29 +140,20 @@ func (h *OrderHandler) CancelOrder(c *gin.Context) {
 }
 
 func (h *OrderHandler) UpdateOrderStatus(c *gin.Context) {
-	orderIDStr := c.Param("id")
-	orderID, err := strconv.ParseUint(orderIDStr, 10, 32)
+	orderID, err := parseOrderID(c)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, models.ErrorResponse{
-			Error: "Invalid order ID",
-		})
+		h.handleError(c, err, "Invalid order ID", http.StatusBadRequest)
 		return
 	}
 
 	var req models.UpdateOrderStatusRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, models.ErrorResponse{
-			Error:   "Invalid request body",
-			Message: err.Error(),
-		})
+		h.handleError(c, err, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	if err := h.orderService.UpdateOrderStatus(c.Request.Context(), uint(orderID), &req); err != nil {
-		c.JSON(http.StatusBadRequest, models.ErrorResponse{
-			Error:   "Failed to update order status",
-			Message: err.Error(),
-		})
+	if err := h.orderService.UpdateOrderStatus(c.Request.Context(), orderID, &req); err != nil {
+		h.handleError(c, err, "Failed to update order status", http.StatusBadRequest)
 		return
 	}
 
@@ -180,28 +163,22 @@ func (h *OrderHandler) UpdateOrderStatus(c *gin.Context) {
 }
 
 func (h *OrderHandler) GetOrderStatus(c *gin.Context) {
-	orderIDStr := c.Param("id")
-	orderID, err := strconv.ParseUint(orderIDStr, 10, 32)
+	orderID, err := parseOrderID(c)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, models.ErrorResponse{
-			Error: "Invalid order ID",
-		})
+		h.handleError(c, err, "Invalid order ID", http.StatusBadRequest)
 		return
 	}
 
-	userID, _ := c.Get("user_id")
-	customerID, _ := userID.(uint)
-
-	userRole, _ := c.Get("user_role")
-	role, _ := userRole.(models.UserRole)
-	isAdmin := role == models.RoleAdmin
-
-	order, err := h.orderService.GetOrderByID(c.Request.Context(), uint(orderID), customerID, isAdmin)
+	customerID, role, err := getUserContext(c)
 	if err != nil {
-		c.JSON(http.StatusNotFound, models.ErrorResponse{
-			Error:   "Order not found",
-			Message: err.Error(),
-		})
+		h.handleError(c, err, "Authentication failed", http.StatusUnauthorized)
+		return
+	}
+
+	isAdmin := role == models.RoleAdmin
+	order, err := h.orderService.GetOrderByID(c.Request.Context(), orderID, customerID, isAdmin)
+	if err != nil {
+		h.handleError(c, err, "Order not found", http.StatusNotFound)
 		return
 	}
 

@@ -2,7 +2,9 @@ package routes
 
 import (
 	"net/http"
+	"strings"
 
+	"delivery-management/internal/config"
 	"delivery-management/internal/handlers"
 	"delivery-management/internal/middleware"
 	"delivery-management/internal/models"
@@ -14,6 +16,7 @@ func SetupRoutes(
 	userHandler *handlers.UserHandler,
 	orderHandler *handlers.OrderHandler,
 	jwtManager *utils.JWTManager,
+	cfg *config.Config,
 ) *gin.Engine {
 	router := gin.New()
 
@@ -25,17 +28,48 @@ func SetupRoutes(
 	router.Use(middleware.ErrorHandlingMiddleware())
 	router.Use(gin.Recovery())
 
+	// CSRF protection for all routes except auth and health
+	router.Use(func(c *gin.Context) {
+		path := c.Request.URL.Path
+		if strings.HasPrefix(path, "/api/auth") || path == "/health" || path == "/metrics" {
+			c.Set("csrf_exempt", true)
+		}
+		c.Next()
+	})
+	router.Use(middleware.CSRFMiddleware(cfg))
+
 	// Health check endpoint
 	router.GET("/health", func(c *gin.Context) {
+		c.Header("Cache-Control", "no-cache")
 		c.JSON(http.StatusOK, gin.H{
 			"status":  "healthy",
 			"service": "delivery-management",
 		})
 	})
 
+	// CSRF token endpoint
+	router.GET("/csrf-token", func(c *gin.Context) {
+		if !cfg.CSRF.Enabled {
+			c.JSON(http.StatusOK, gin.H{"csrf_enabled": false})
+			return
+		}
+		token, err := middleware.GenerateCSRFToken()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate CSRF token"})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"csrf_token": token})
+	})
+
 	// Metrics endpoint
 	router.GET("/metrics", func(c *gin.Context) {
-		c.JSON(http.StatusOK, middleware.GlobalMetrics.GetMetrics())
+		metrics := middleware.GlobalMetrics
+		if metrics == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "metrics unavailable"})
+			return
+		}
+		c.Header("Cache-Control", "no-cache")
+		c.JSON(http.StatusOK, metrics.GetMetrics())
 	})
 
 	// API routes
@@ -46,11 +80,9 @@ func SetupRoutes(
 		{
 			auth.POST("/register", userHandler.Register)
 			auth.POST("/login", userHandler.Login)
+			refreshHandler := handlers.NewRefreshHandler(jwtManager)
+			auth.POST("/refresh", refreshHandler.RefreshToken)
 		}
-
-		// Refresh token route
-		refreshHandler := handlers.NewRefreshHandler(jwtManager)
-		api.POST("/auth/refresh", refreshHandler.RefreshToken)
 
 		// Protected routes
 		protected := api.Group("")

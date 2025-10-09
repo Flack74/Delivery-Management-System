@@ -19,6 +19,10 @@ var statusTransitions = map[OrderStatus][]OrderStatus{
 }
 
 func (s OrderStatus) CanTransitionTo(newStatus OrderStatus) bool {
+	if !s.IsValid() || !newStatus.IsValid() {
+		return false
+	}
+	
 	allowedTransitions, exists := statusTransitions[s]
 	if !exists {
 		return false

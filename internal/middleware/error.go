@@ -18,12 +18,7 @@ func ErrorHandlingMiddleware() gin.HandlerFunc {
 			case *models.APIError:
 				c.JSON(e.Code, e)
 			default:
-				apiErr := models.NewAPIError(
-					http.StatusInternalServerError,
-					"Internal server error",
-					e.Error(),
-					"INTERNAL_ERROR",
-				)
+				apiErr := models.NewInternalError("Internal server error")
 				c.JSON(http.StatusInternalServerError, apiErr)
 			}
 		}

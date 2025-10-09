@@ -13,6 +13,7 @@ type Config struct {
 	JWT      JWTConfig
 	Server   ServerConfig
 	Log      LogConfig
+	CSRF     CSRFConfig
 }
 
 type DatabaseConfig struct {
@@ -44,6 +45,10 @@ type LogConfig struct {
 	Level string
 }
 
+type CSRFConfig struct {
+	Enabled bool
+}
+
 func Load() (*Config, error) {
 	cfg := &Config{}
 
@@ -56,7 +61,7 @@ func Load() (*Config, error) {
 
 	port, err := strconv.Atoi(getEnv("DB_PORT", "5432"))
 	if err != nil {
-		return nil, fmt.Errorf("invalid DB_PORT: %w", err)
+		return nil, fmt.Errorf("invalid DB_PORT configuration: %w", err)
 	}
 	cfg.Database.Port = port
 
@@ -66,32 +71,38 @@ func Load() (*Config, error) {
 
 	redisPort, err := strconv.Atoi(getEnv("REDIS_PORT", "6379"))
 	if err != nil {
-		return nil, fmt.Errorf("invalid REDIS_PORT: %w", err)
+		return nil, fmt.Errorf("invalid REDIS_PORT configuration: %w", err)
 	}
 	cfg.Redis.Port = redisPort
 
 	// JWT configuration
 	cfg.JWT.Secret = getEnv("JWT_SECRET", "")
 	if cfg.JWT.Secret == "" {
-		return nil, fmt.Errorf("JWT_SECRET is required")
+		return nil, fmt.Errorf("JWT_SECRET is required and cannot be empty")
+	}
+	if len(cfg.JWT.Secret) < 32 {
+		return nil, fmt.Errorf("JWT_SECRET must be at least 32 characters long for security")
 	}
 
 	expiry, err := time.ParseDuration(getEnv("JWT_EXPIRY", "24h"))
 	if err != nil {
-		return nil, fmt.Errorf("invalid JWT_EXPIRY: %w", err)
+		return nil, fmt.Errorf("invalid JWT_EXPIRY configuration: %w", err)
 	}
 	cfg.JWT.Expiry = expiry
 
 	// Server configuration
 	serverPort, err := strconv.Atoi(getEnv("SERVER_PORT", "8080"))
 	if err != nil {
-		return nil, fmt.Errorf("invalid SERVER_PORT: %w", err)
+		return nil, fmt.Errorf("invalid SERVER_PORT configuration: %w", err)
 	}
 	cfg.Server.Port = serverPort
 	cfg.Server.Mode = getEnv("GIN_MODE", "debug")
 
 	// Log configuration
 	cfg.Log.Level = getEnv("LOG_LEVEL", "info")
+
+	// CSRF configuration
+	cfg.CSRF.Enabled = getEnv("CSRF_PROTECTION", "true") == "true"
 
 	return cfg, nil
 }
@@ -104,11 +115,24 @@ func getEnv(key, defaultValue string) string {
 }
 
 func (c *Config) DatabaseDSN() string {
-	return fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
+	return fmt.Sprintf("host=%s port=%d user=%s password=*** dbname=%s sslmode=%s",
 		c.Database.Host, c.Database.Port, c.Database.User,
-		c.Database.Password, c.Database.Name, c.Database.SSLMode)
+		c.Database.Name, c.Database.SSLMode)
 }
 
 func (c *Config) RedisAddr() string {
 	return fmt.Sprintf("%s:%d", c.Redis.Host, c.Redis.Port)
 }
+
+func (c *Config) GetDatabaseDSN() string {
+	return fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
+		c.Database.Host, c.Database.Port, c.Database.User, c.Database.Password,
+		c.Database.Name, c.Database.SSLMode)
+}
+
+// GetSafeDatabaseDSN returns a sanitized DSN for logging purposes
+func (c *Config) GetSafeDatabaseDSN() string {
+	return c.DatabaseDSN()
+}
+
+

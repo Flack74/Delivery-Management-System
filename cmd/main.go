@@ -17,6 +17,7 @@ import (
 	"delivery-management/internal/routes"
 	"delivery-management/internal/services"
 	"delivery-management/internal/utils"
+
 	"github.com/gin-gonic/gin"
 )
 
@@ -35,29 +36,42 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
-	defer database.Close()
+	defer func() {
+		if err := database.Close(); err != nil {
+			log.Printf("Failed to close database: %v", err)
+		}
+	}()
 
 	// Initialize Redis cache
 	redisCache, err := cache.NewCache(cfg)
 	if err != nil {
 		log.Fatalf("Failed to initialize Redis cache: %v", err)
 	}
-	defer redisCache.Close()
+	defer func() {
+		if err := redisCache.Close(); err != nil {
+			log.Printf("Failed to close Redis cache: %v", err)
+		}
+	}()
 
 	// Initialize JWT manager
-	jwtManager := utils.NewJWTManager(cfg)
+	jwtManager, err := utils.NewJWTManager(cfg)
+	if err != nil {
+		log.Fatalf("Failed to initialize JWT manager: %v", err)
+	}
 
 	// Initialize services
 	userService := services.NewUserService(database, jwtManager)
 	orderService := services.NewOrderService(database, redisCache)
-	defer orderService.Stop()
+	if orderService == nil {
+		log.Fatalf("Failed to initialize order service")
+	}
 
 	// Initialize handlers
 	userHandler := handlers.NewUserHandler(userService)
 	orderHandler := handlers.NewOrderHandler(orderService)
 
 	// Setup routes
-	router := routes.SetupRoutes(userHandler, orderHandler, jwtManager)
+	router := routes.SetupRoutes(userHandler, orderHandler, jwtManager, cfg)
 
 	// Create HTTP server
 	server := &http.Server{
@@ -89,7 +103,11 @@ func main() {
 	// Shutdown server
 	if err := server.Shutdown(ctx); err != nil {
 		log.Printf("Server forced to shutdown: %v", err)
+		os.Exit(1)
 	}
+
+	// Stop the order service after the server has shut down
+	orderService.Stop()
 
 	log.Println("Server exited")
 }

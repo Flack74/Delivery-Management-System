@@ -15,10 +15,20 @@ type Metrics struct {
 	mu             sync.RWMutex
 }
 
-var GlobalMetrics = &Metrics{
-	RequestCount: make(map[string]int64),
-	ResponseTime: make(map[string]time.Duration),
-	ErrorCount:   make(map[string]int64),
+var (
+	GlobalMetrics *Metrics
+	metricsOnce   sync.Once
+)
+
+func getMetrics() *Metrics {
+	metricsOnce.Do(func() {
+		GlobalMetrics = &Metrics{
+			RequestCount: make(map[string]int64),
+			ResponseTime: make(map[string]time.Duration),
+			ErrorCount:   make(map[string]int64),
+		}
+	})
+	return GlobalMetrics
 }
 
 func MetricsMiddleware() gin.HandlerFunc {
@@ -27,26 +37,25 @@ func MetricsMiddleware() gin.HandlerFunc {
 		path := c.FullPath()
 		method := c.Request.Method
 
-		GlobalMetrics.mu.Lock()
-		GlobalMetrics.ActiveRequests++
-		GlobalMetrics.mu.Unlock()
+		metrics := getMetrics()
+		metrics.mu.Lock()
+		metrics.ActiveRequests++
+		metrics.mu.Unlock()
 
 		c.Next()
 
 		duration := time.Since(start)
 		statusCode := c.Writer.Status()
 
-		GlobalMetrics.mu.Lock()
-		defer GlobalMetrics.mu.Unlock()
-
 		key := method + " " + path
-		GlobalMetrics.RequestCount[key]++
-		GlobalMetrics.ResponseTime[key] = duration
-		GlobalMetrics.ActiveRequests--
-
+		metrics.mu.Lock()
+		metrics.RequestCount[key]++
+		metrics.ResponseTime[key] = duration
+		metrics.ActiveRequests--
 		if statusCode >= 400 {
-			GlobalMetrics.ErrorCount[key]++
+			metrics.ErrorCount[key]++
 		}
+		metrics.mu.Unlock()
 	}
 }
 

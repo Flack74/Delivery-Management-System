@@ -23,9 +23,26 @@ func NewUserService(database *db.Database, jwtManager *utils.JWTManager) *UserSe
 }
 
 func (s *UserService) Register(ctx context.Context, req *models.CreateUserRequest) (*models.UserResponse, error) {
+	if req == nil {
+		return nil, models.NewBadRequestError("request cannot be nil")
+	}
+	
+	// Sanitize inputs
+	req.Email = utils.SanitizeInput(req.Email)
+	
+	if !utils.ValidateEmail(req.Email) {
+		return nil, models.NewBadRequestError("invalid email format")
+	}
+	if !utils.ValidatePassword(req.Password) {
+		return nil, models.NewBadRequestError("password must be 8-128 characters")
+	}
+	if utils.DetectSQLInjection(req.Email) {
+		return nil, models.NewBadRequestError("invalid input detected")
+	}
+	
 	// Check if user already exists
 	var existingUser models.User
-	if err := s.db.Where("email = ?", req.Email).First(&existingUser).Error; err == nil {
+	if err := s.db.WithContext(ctx).Where("email = ?", req.Email).First(&existingUser).Error; err == nil {
 		return nil, fmt.Errorf("user with email %s already exists", req.Email)
 	} else if err != gorm.ErrRecordNotFound {
 		return nil, fmt.Errorf("failed to check existing user: %w", err)

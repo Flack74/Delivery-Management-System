@@ -44,7 +44,7 @@ The Delivery Management System is a comprehensive backend solution for managing 
 - **Concurrent Processing**: 10-worker pool for parallel order handling
 - **Secure Authentication**: JWT-based auth with role-based access control
 - **Production Ready**: Docker containerization with health checks
-- **Automated Testing**: Comprehensive test suite with 85%+ coverage
+- **Automated Testing**: 29 comprehensive tests with automated test runner
 
 ---
 
@@ -366,35 +366,71 @@ Response:
 
 ## 🧪 Testing
 
-### Run Tests
+### Test Runner Script
+
+Use the comprehensive test runner for all testing needs:
 
 ```bash
-# All tests
-go test ./tests/... -v
+# Run all tests (fast mode - skips long-running tests)
+./run_tests.sh all
 
-# With coverage
-go test ./tests/... -v -cover
+# Quick tests only (unit + edge cases)
+./run_tests.sh quick
+
+# Specific test categories
+./run_tests.sh unit          # Unit tests only
+./run_tests.sh integration   # Integration tests only
+./run_tests.sh service       # Service layer tests
+./run_tests.sh handler       # Handler tests
+./run_tests.sh middleware    # Middleware tests
+./run_tests.sh edge          # Edge case tests
+./run_tests.sh load          # Load tests
+./run_tests.sh race          # Race condition detection
+./run_tests.sh bench         # Benchmarks
+```
+
+### Manual Test Execution
+
+```bash
+# All tests with short mode (recommended)
+go test ./tests/... -v -short
+
+# All tests including long-running ones
+go test ./tests/... -v
 
 # Specific test file
 go test ./tests/unit_test.go -v
 
 # Race condition detection
-go test ./tests/... -race
+go test ./tests/... -race -short
 ```
 
-### Test Coverage
+### Test Suite Overview
 
-- Unit Tests: Core business logic
-- Integration Tests: Database and Redis
-- Edge Case Tests: Boundary conditions
-- Load Tests: Performance benchmarks
+**Test Statistics:**
+- **Total Tests:** 29 top-level tests
+- **Test Categories:** 12 different test modes
+- **Execution Time:** ~5 seconds (short mode), ~10 minutes (full suite)
 
-**Current Coverage: 85%+**
+**Test Categories:**
+- **Unit Tests:** Core business logic (password hashing, validation, conversions)
+- **Integration Tests:** Database and Redis connectivity
+- **Service Tests:** User and order service layer
+- **Handler Tests:** HTTP request/response handling
+- **Middleware Tests:** Authentication, CORS, logging
+- **Edge Case Tests:** Boundary conditions and error scenarios
+- **Load Tests:** Performance and stress testing
+- **Benchmark Tests:** Performance metrics
+
+**Note:** Long-running tests (3+ minutes) are automatically skipped in short mode to keep test execution fast.
 
 ### Load Testing
 
 ```bash
-# Install hey
+# Using test runner
+./run_tests.sh load
+
+# Manual load testing with hey
 go install github.com/rakyll/hey@latest
 
 # Test health endpoint
@@ -406,6 +442,22 @@ hey -n 100 -c 5 -m POST -H "Authorization: Bearer <token>" \
   -d '{"items":"Test","address":"Test St"}' \
   http://localhost:8080/api/orders
 ```
+
+### Test Infrastructure
+
+**Features:**
+- ✅ Automated test runner with 12 modes
+- ✅ Color-coded output for easy reading
+- ✅ Test statistics and summaries
+- ✅ Race condition detection
+- ✅ Benchmark execution
+- ✅ Prerequisite checking
+- ✅ Fast execution with caching disabled
+
+**Test Files:**
+- `run_tests.sh` - Main test runner script
+- `TESTING.md` - Detailed testing documentation
+- `tests/` - All test files organized by category
 
 ---
 

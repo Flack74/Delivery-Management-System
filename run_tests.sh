@@ -135,7 +135,7 @@ run_all_tests_with_coverage() {
     
     cd "$PROJECT_ROOT"
     
-    if go test ./tests/... -v -short -coverprofile="$COVERAGE_FILE" -covermode=atomic 2>&1 | tee /tmp/test_output.log; then
+    if go test ./tests/... -v -short -count=1 -coverprofile="$COVERAGE_FILE" -covermode=atomic 2>&1 | tee /tmp/test_output.log; then
         print_success "All tests passed"
         
         # Generate coverage report
@@ -161,7 +161,7 @@ run_race_detector() {
     
     cd "$PROJECT_ROOT"
     
-    if go test ./tests/... -race -short 2>&1 | tee /tmp/race_output.log; then
+    if go test ./tests/... -race -short -count=1 2>&1 | tee /tmp/race_output.log; then
         print_success "No race conditions detected"
         return 0
     else
@@ -195,21 +195,33 @@ generate_summary() {
     print_header "Test Summary"
     
     if [ -f "$COVERAGE_FILE" ]; then
-        echo -e "${BLUE}Coverage Report:${NC}"
-        go tool cover -func="$COVERAGE_FILE" | tail -10
+        COVERAGE=$(go tool cover -func="$COVERAGE_FILE" 2>/dev/null | grep total | awk '{print $3}' | tr -d '%')
+        if [ -n "$COVERAGE" ] && [ "$(echo "$COVERAGE > 0" | bc -l 2>/dev/null || echo 0)" -eq 1 ]; then
+            echo -e "${BLUE}Coverage Report:${NC}"
+            go tool cover -func="$COVERAGE_FILE" | tail -10
+        fi
     fi
     
     if [ -f /tmp/test_output.log ]; then
-        TOTAL_TESTS=$(grep -c "^=== RUN" /tmp/test_output.log || echo "0")
-        PASSED_TESTS=$(grep -c "^--- PASS" /tmp/test_output.log || echo "0")
-        FAILED_TESTS=$(grep -c "^--- FAIL" /tmp/test_output.log || echo "0")
-        SKIPPED_TESTS=$(grep -c "^--- SKIP" /tmp/test_output.log || echo "0")
+        # Count only top-level tests (exclude subtests with /)
+        TOTAL_TESTS=$(grep "^=== RUN" /tmp/test_output.log | grep -v "/" | wc -l | tr -d ' ')
+        PASSED_TESTS=$(grep "^--- PASS" /tmp/test_output.log | grep -v "/" | wc -l | tr -d ' ')
+        FAILED_TESTS=$(grep "^--- FAIL" /tmp/test_output.log | grep -v "/" | wc -l | tr -d ' ')
+        SKIPPED_TESTS=$(grep "^--- SKIP" /tmp/test_output.log | grep -v "/" | wc -l | tr -d ' ')
         
         echo -e "\n${BLUE}Test Statistics:${NC}"
         echo -e "  Total:   $TOTAL_TESTS"
         echo -e "  ${GREEN}Passed:  $PASSED_TESTS${NC}"
-        [ "$FAILED_TESTS" -gt 0 ] && echo -e "  ${RED}Failed:  $FAILED_TESTS${NC}" || echo -e "  Failed:  $FAILED_TESTS"
-        [ "$SKIPPED_TESTS" -gt 0 ] && echo -e "  ${YELLOW}Skipped: $SKIPPED_TESTS${NC}" || echo -e "  Skipped: $SKIPPED_TESTS"
+        if [ "$FAILED_TESTS" -gt 0 ]; then
+            echo -e "  ${RED}Failed:  $FAILED_TESTS${NC}"
+        else
+            echo -e "  Failed:  $FAILED_TESTS"
+        fi
+        if [ "$SKIPPED_TESTS" -gt 0 ]; then
+            echo -e "  ${YELLOW}Skipped: $SKIPPED_TESTS${NC}"
+        else
+            echo -e "  Skipped: $SKIPPED_TESTS"
+        fi
     fi
 }
 

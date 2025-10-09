@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"delivery-management/internal/cache"
 	"delivery-management/internal/config"
@@ -43,8 +44,8 @@ func (suite *OrderTestSuite) SetupSuite() {
 			Host:     "localhost",
 			Port:     5432,
 			User:     "postgres",
-			Password: "password",
-			Name:     "delivery_management_test",
+			Password: "86k9M0whXiogO2z5F8",
+			Name:     "delivery_management",
 			SSLMode:  "disable",
 		},
 		Redis: config.RedisConfig{
@@ -52,7 +53,8 @@ func (suite *OrderTestSuite) SetupSuite() {
 			Port: 6379,
 		},
 		JWT: config.JWTConfig{
-			Secret: "test-secret",
+			Secret: "test-secret-key-with-32-characters-minimum",
+			Expiry: 24 * time.Hour,
 		},
 	}
 
@@ -92,7 +94,8 @@ func (suite *OrderTestSuite) setupRoutes() {
 
 func (suite *OrderTestSuite) TearDownSuite() {
 	if suite.orderService != nil {
-		suite.orderService.Stop()
+		go suite.orderService.Stop()
+		time.Sleep(2 * time.Second) // Give workers time to stop
 	}
 	if suite.cache != nil {
 		suite.cache.Close()

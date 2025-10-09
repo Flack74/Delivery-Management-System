@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"delivery-management/internal/config"
 	"delivery-management/internal/db"
@@ -35,12 +36,13 @@ func (suite *UserTestSuite) SetupSuite() {
 			Host:     "localhost",
 			Port:     5432,
 			User:     "postgres",
-			Password: "password",
-			Name:     "delivery_management_test",
+			Password: "86k9M0whXiogO2z5F8",
+			Name:     "delivery_management",
 			SSLMode:  "disable",
 		},
 		JWT: config.JWTConfig{
-			Secret: "test-secret",
+			Secret: "test-secret-key-with-32-characters-minimum",
+			Expiry: 24 * time.Hour,
 		},
 	}
 

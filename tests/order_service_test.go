@@ -2,6 +2,7 @@ package tests
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -15,13 +16,16 @@ import (
 )
 
 func TestOrderService_CreateOrder(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping long-running test in short mode")
+	}
 	cfg := &config.Config{
 		Database: config.DatabaseConfig{
 			Host:     "localhost",
 			Port:     5432,
 			User:     "postgres",
-			Password: "password",
-			Name:     "test_db",
+			Password: "86k9M0whXiogO2z5F8",
+			Name:     "delivery_management",
 		},
 		Redis: config.RedisConfig{
 			Host: "localhost",
@@ -42,7 +46,7 @@ func TestOrderService_CreateOrder(t *testing.T) {
 
 	// Create test user
 	user := &models.User{
-		Email:    "test@example.com",
+		Email:    fmt.Sprintf("test_%d@example.com", time.Now().UnixNano()),
 		Password: "hashedpassword",
 		Role:     models.RoleCustomer,
 	}
@@ -68,8 +72,8 @@ func TestOrderService_GetOrdersByCustomer(t *testing.T) {
 			Host:     "localhost",
 			Port:     5432,
 			User:     "postgres",
-			Password: "password",
-			Name:     "test_db",
+			Password: "86k9M0whXiogO2z5F8",
+			Name:     "delivery_management",
 		},
 		Redis: config.RedisConfig{
 			Host: "localhost",
@@ -90,7 +94,7 @@ func TestOrderService_GetOrdersByCustomer(t *testing.T) {
 
 	// Create test user
 	user := &models.User{
-		Email:    "test2@example.com",
+		Email:    fmt.Sprintf("test2_%d@example.com", time.Now().UnixNano()),
 		Password: "hashedpassword",
 		Role:     models.RoleCustomer,
 	}
@@ -120,8 +124,8 @@ func TestOrderService_CancelOrder(t *testing.T) {
 			Host:     "localhost",
 			Port:     5432,
 			User:     "postgres",
-			Password: "password",
-			Name:     "test_db",
+			Password: "86k9M0whXiogO2z5F8",
+			Name:     "delivery_management",
 		},
 		Redis: config.RedisConfig{
 			Host: "localhost",
@@ -142,7 +146,7 @@ func TestOrderService_CancelOrder(t *testing.T) {
 
 	// Create test user
 	user := &models.User{
-		Email:    "test3@example.com",
+		Email:    fmt.Sprintf("test3_%d@example.com", time.Now().UnixNano()),
 		Password: "hashedpassword",
 		Role:     models.RoleCustomer,
 	}
@@ -176,8 +180,8 @@ func TestOrderService_UpdateOrderStatus(t *testing.T) {
 			Host:     "localhost",
 			Port:     5432,
 			User:     "postgres",
-			Password: "password",
-			Name:     "test_db",
+			Password: "86k9M0whXiogO2z5F8",
+			Name:     "delivery_management",
 		},
 		Redis: config.RedisConfig{
 			Host: "localhost",
@@ -198,7 +202,7 @@ func TestOrderService_UpdateOrderStatus(t *testing.T) {
 
 	// Create test user
 	user := &models.User{
-		Email:    "test4@example.com",
+		Email:    fmt.Sprintf("test4_%d@example.com", time.Now().UnixNano()),
 		Password: "hashedpassword",
 		Role:     models.RoleAdmin,
 	}
@@ -231,13 +235,16 @@ func TestOrderService_UpdateOrderStatus(t *testing.T) {
 }
 
 func TestOrderProcessor_DatabasePersistence(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping long-running test in short mode")
+	}
 	cfg := &config.Config{
 		Database: config.DatabaseConfig{
 			Host:     "localhost",
 			Port:     5432,
 			User:     "postgres",
-			Password: "password",
-			Name:     "test_db",
+			Password: "86k9M0whXiogO2z5F8",
+			Name:     "delivery_management",
 		},
 		Redis: config.RedisConfig{
 			Host: "localhost",
@@ -258,7 +265,7 @@ func TestOrderProcessor_DatabasePersistence(t *testing.T) {
 
 	// Create test user
 	user := &models.User{
-		Email:    "test5@example.com",
+		Email:    fmt.Sprintf("test5_%d@example.com", time.Now().UnixNano()),
 		Password: "hashedpassword",
 		Role:     models.RoleCustomer,
 	}
@@ -274,8 +281,8 @@ func TestOrderProcessor_DatabasePersistence(t *testing.T) {
 	order, err := orderService.CreateOrder(context.Background(), req, user.ID)
 	require.NoError(t, err)
 
-	// Wait for processing to start
-	time.Sleep(15 * time.Second)
+	// Wait for first status transition (60s + buffer)
+	time.Sleep(65 * time.Second)
 
 	// Verify order status was updated in database
 	var updatedOrder models.Order

@@ -2,7 +2,9 @@ package tests
 
 import (
 	"context"
+	"fmt"
 	"testing"
+	"time"
 
 	"delivery-management/internal/config"
 	"delivery-management/internal/db"
@@ -19,11 +21,12 @@ func createTestConfig() *config.Config {
 			Host:     "localhost",
 			Port:     5432,
 			User:     "postgres",
-			Password: "password",
-			Name:     "test_db",
+			Password: "86k9M0whXiogO2z5F8",
+			Name:     "delivery_management",
 		},
 		JWT: config.JWTConfig{
-			Secret: "test-secret",
+			Secret: "test-secret-key-with-32-characters-minimum",
+			Expiry: 24 * time.Hour,
 		},
 	}
 }
@@ -51,7 +54,7 @@ func TestUserService_Register(t *testing.T) {
 	defer cleanup()
 
 	req := &models.CreateUserRequest{
-		Email:    "newuser@example.com",
+		Email:    fmt.Sprintf("newuser_%d@example.com", time.Now().UnixNano()),
 		Password: "password123",
 		Role:     models.RoleCustomer,
 	}
@@ -68,8 +71,9 @@ func TestUserService_Login(t *testing.T) {
 	userService, cleanup := setupUserService(t)
 	defer cleanup()
 
+	email := fmt.Sprintf("logintest_%d@example.com", time.Now().UnixNano())
 	registerReq := &models.CreateUserRequest{
-		Email:    "logintest@example.com",
+		Email:    email,
 		Password: "password123",
 		Role:     models.RoleCustomer,
 	}
@@ -78,7 +82,7 @@ func TestUserService_Login(t *testing.T) {
 	require.NoError(t, err)
 
 	loginReq := &models.LoginRequest{
-		Email:    "logintest@example.com",
+		Email:    email,
 		Password: "password123",
 	}
 
@@ -107,7 +111,7 @@ func TestUserService_GetByID(t *testing.T) {
 	defer cleanup()
 
 	registerReq := &models.CreateUserRequest{
-		Email:    "getbyid@example.com",
+		Email:    fmt.Sprintf("getbyid_%d@example.com", time.Now().UnixNano()),
 		Password: "password123",
 		Role:     models.RoleAdmin,
 	}
@@ -128,7 +132,7 @@ func TestUserService_DuplicateEmail(t *testing.T) {
 	defer cleanup()
 
 	req := &models.CreateUserRequest{
-		Email:    "duplicate@example.com",
+		Email:    fmt.Sprintf("duplicate_%d@example.com", time.Now().UnixNano()),
 		Password: "password123",
 		Role:     models.RoleCustomer,
 	}

@@ -5,6 +5,7 @@ import (
 
 	"delivery-management/internal/models"
 	"delivery-management/internal/services"
+	"delivery-management/internal/utils"
 	"github.com/gin-gonic/gin"
 )
 
@@ -25,6 +26,16 @@ func (h *UserHandler) Register(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{
 			Error:   "Invalid request body",
 			Message: "Request validation failed",
+		})
+		return
+	}
+	
+	// Validate struct
+	if err := utils.ValidateStruct(&req); err != nil {
+		c.Header("X-Request-ID", c.GetString("request_id"))
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{
+			Error:   "Validation failed",
+			Message: err.Error(),
 		})
 		return
 	}

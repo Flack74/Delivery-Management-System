@@ -93,19 +93,27 @@ func (p *OrderProcessor) processOrder(order *models.Order) {
 		// Wait before transitioning (simulate real processing time)
 		time.Sleep(60 * time.Second)
 
-		// Check if order was cancelled
-		if order.Status == models.StatusCancelled {
+		// Reload order from database to check current status
+		var currentOrder models.Order
+		if err := p.db.WithContext(ctx).First(&currentOrder, order.ID).Error; err != nil {
+			log.Printf("Failed to reload order %d: %v", order.ID, err)
 			return
 		}
 
-		// Update order status
-		order.Status = status
+		// Check if order was cancelled
+		if currentOrder.Status == models.StatusCancelled {
+			return
+		}
 
-		// Persist status to database with optimized query
-		if err := p.db.WithContext(ctx).Model(&models.Order{}).Where("id = ?", order.ID).Update("status", status).Error; err != nil {
+		// Update order status with transaction
+		tx := p.db.WithContext(ctx).Begin()
+		if err := tx.Model(&models.Order{}).Where("id = ? AND status = ?", order.ID, currentOrder.Status).Update("status", status).Error; err != nil {
+			tx.Rollback()
 			log.Printf("Failed to update order status in DB: %v", err)
 			continue
 		}
+		tx.Commit()
+		order.Status = status
 
 		// Publish status update with optimized JSON
 		timestamp := time.Now().Format(time.RFC3339)

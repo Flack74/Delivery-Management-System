@@ -40,6 +40,12 @@ func MetricsMiddleware() gin.HandlerFunc {
 		metrics := getMetrics()
 		metrics.mu.Lock()
 		metrics.ActiveRequests++
+		// Cleanup if too many entries
+		if len(metrics.RequestCount) > 1000 {
+			metrics.RequestCount = make(map[string]int64)
+			metrics.ResponseTime = make(map[string]time.Duration)
+			metrics.ErrorCount = make(map[string]int64)
+		}
 		metrics.mu.Unlock()
 
 		c.Next()

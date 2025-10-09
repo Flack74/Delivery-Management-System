@@ -18,8 +18,15 @@ func getUserContext(c *gin.Context) (uint, models.UserRole, error) {
 		return 0, "", models.NewInternalError("Invalid user context")
 	}
 
-	userRole, _ := c.Get("user_role")
-	role, _ := userRole.(models.UserRole)
+	userRole, exists := c.Get("user_role")
+	if !exists {
+		return 0, "", models.NewUnauthorizedError("User role not found in context")
+	}
+
+	role, ok := userRole.(models.UserRole)
+	if !ok {
+		return 0, "", models.NewInternalError("Invalid user role type")
+	}
 
 	return id, role, nil
 }

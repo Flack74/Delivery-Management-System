@@ -7,6 +7,7 @@ import (
 
 	"delivery-management/internal/models"
 	"delivery-management/internal/services"
+	"delivery-management/internal/utils"
 	"github.com/gin-gonic/gin"
 )
 
@@ -43,6 +44,15 @@ func (h *OrderHandler) CreateOrder(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{
 			Error:   "Invalid request body",
 			Message: "Request validation failed",
+		})
+		return
+	}
+	
+	// Validate struct
+	if err := utils.ValidateStruct(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{
+			Error:   "Validation failed",
+			Message: err.Error(),
 		})
 		return
 	}

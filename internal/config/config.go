@@ -4,8 +4,21 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
+
+// sanitizeConfigValue removes newlines and control characters to prevent log injection
+func sanitizeConfigValue(input string) string {
+	input = strings.ReplaceAll(input, "\n", "")
+	input = strings.ReplaceAll(input, "\r", "")
+	for i := 0; i < 32; i++ {
+		if i != 9 { // Keep tab character
+			input = strings.ReplaceAll(input, string(rune(i)), "")
+		}
+	}
+	return input
+}
 
 type Config struct {
 	Database DatabaseConfig
@@ -116,12 +129,12 @@ func getEnv(key, defaultValue string) string {
 
 func (c *Config) DatabaseDSN() string {
 	return fmt.Sprintf("host=%s port=%d user=%s password=*** dbname=%s sslmode=%s",
-		c.Database.Host, c.Database.Port, c.Database.User,
-		c.Database.Name, c.Database.SSLMode)
+		sanitizeConfigValue(c.Database.Host), c.Database.Port, sanitizeConfigValue(c.Database.User),
+		sanitizeConfigValue(c.Database.Name), sanitizeConfigValue(c.Database.SSLMode))
 }
 
 func (c *Config) RedisAddr() string {
-	return fmt.Sprintf("%s:%d", c.Redis.Host, c.Redis.Port)
+	return fmt.Sprintf("%s:%d", sanitizeConfigValue(c.Redis.Host), c.Redis.Port)
 }
 
 func (c *Config) GetDatabaseDSN() string {

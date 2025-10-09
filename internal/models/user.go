@@ -10,6 +10,8 @@ type UserRole string
 const (
 	RoleCustomer UserRole = "customer"
 	RoleAdmin    UserRole = "admin"
+	// DefaultBcryptCost is the default cost for bcrypt hashing
+	DefaultBcryptCost = 12
 )
 
 type User struct {

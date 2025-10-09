@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"delivery-management/internal/config"
+
 	"github.com/redis/go-redis/v9"
 )
 
@@ -41,7 +42,7 @@ func NewCache(cfg *config.Config) (*Cache, error) {
 	return &Cache{client: rdb}, nil
 }
 
-func (c *Cache) Set(ctx context.Context, key string, value interface{}, expiration time.Duration) error {
+func (c *Cache) Set(ctx context.Context, key string, value any, expiration time.Duration) error {
 	return c.client.Set(ctx, key, value, expiration).Err()
 }
 
@@ -53,7 +54,7 @@ func (c *Cache) Delete(ctx context.Context, key string) error {
 	return c.client.Del(ctx, key).Err()
 }
 
-func (c *Cache) Publish(ctx context.Context, channel string, message interface{}) error {
+func (c *Cache) Publish(ctx context.Context, channel string, message any) error {
 	return c.client.Publish(ctx, channel, message).Err()
 }
 

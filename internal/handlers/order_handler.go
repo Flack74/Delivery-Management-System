@@ -30,7 +30,7 @@ func (h *OrderHandler) handleError(c *gin.Context, err error, defaultMsg string,
 		})
 		return
 	}
-	log.Printf("Order handler error [%s]: %v", c.Request.URL.Path, err)
+	log.Printf("Order handler error [%s]: %v", html.EscapeString(c.Request.URL.Path), err)
 	c.Header("X-Request-ID", c.GetString("request_id"))
 	c.JSON(defaultCode, models.ErrorResponse{
 		Error:   html.EscapeString(defaultMsg),

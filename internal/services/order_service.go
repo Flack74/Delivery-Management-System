@@ -95,7 +95,7 @@ func (p *OrderProcessor) processOrder(order *models.Order) {
 
 		// Reload order from database to check current status
 		var currentOrder models.Order
-		if err := p.db.WithContext(ctx).First(&currentOrder, order.ID).Error; err != nil {
+		if err := p.db.WithContext(ctx).Select("id", "status").First(&currentOrder, order.ID).Error; err != nil {
 			log.Printf("Failed to reload order %d: %v", order.ID, err)
 			return
 		}
@@ -112,7 +112,10 @@ func (p *OrderProcessor) processOrder(order *models.Order) {
 			log.Printf("Failed to update order status in DB: %v", err)
 			continue
 		}
-		tx.Commit()
+		if err := tx.Commit().Error; err != nil {
+			log.Printf("Failed to commit transaction for order %d: %v", order.ID, err)
+			continue
+		}
 		order.Status = status
 
 		// Publish status update with optimized JSON
@@ -267,22 +270,22 @@ func (s *OrderService) UpdateOrderStatus(ctx context.Context, orderID uint, req 
 	var order models.Order
 	if err := s.db.WithContext(ctx).First(&order, orderID).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
-			return fmt.Errorf("order not found")
+			return models.NewNotFoundError("order not found")
 		}
-		return fmt.Errorf("failed to get order: %w", err)
+		return models.NewInternalError("failed to get order")
 	}
 
 	if !req.Status.IsValid() {
-		return fmt.Errorf("invalid status: %s", req.Status)
+		return models.NewBadRequestError(fmt.Sprintf("invalid status: %s", req.Status))
 	}
 
 	if !order.Status.CanTransitionTo(req.Status) {
-		return fmt.Errorf("cannot transition from %s to %s", order.Status, req.Status)
+		return models.NewBadRequestError(fmt.Sprintf("cannot transition from %s to %s", order.Status, req.Status))
 	}
 
 	order.Status = req.Status
 	if err := s.db.WithContext(ctx).Model(&order).Update("status", req.Status).Error; err != nil {
-		return fmt.Errorf("failed to update order status: %w", err)
+		return models.NewInternalError("failed to update order status")
 	}
 
 	// Publish status update

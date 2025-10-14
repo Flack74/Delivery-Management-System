@@ -580,7 +580,6 @@ We welcome contributions! Please follow these steps:
 
 - **Issues**: [GitHub Issues](https://github.com/your-username/delivery-management-system/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/your-username/delivery-management-system/discussions)
-- **Documentation**: [Wiki](https://github.com/your-username/delivery-management-system/wiki)
 
 ### FAQ
 
